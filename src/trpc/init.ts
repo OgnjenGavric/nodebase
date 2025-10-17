@@ -59,7 +59,7 @@ export const premiumProcedure = protectedProcedure.use(
     return next({
       ctx: {
         ...ctx,
-        auth: customer,
+        polarCustomer: customer,
       },
     });
   }
