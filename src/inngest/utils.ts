@@ -1,5 +1,4 @@
 import { Connection, Node } from '@/generated/prisma';
-import { tr } from 'date-fns/locale';
 import toposort from 'toposort';
 
 export const topologicalSort = (
@@ -33,7 +32,7 @@ export const topologicalSort = (
   }
 
   // Perform topological sort
-  let sortedNodeIds = string[];
+  let sortedNodeIds: string[];
   try {
     sortedNodeIds = toposort(edges);
     // Remove duplicates (from self-edges)
