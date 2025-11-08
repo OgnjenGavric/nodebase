@@ -32,22 +32,25 @@ export const httpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
 
     if (['POST', 'PUT', 'PATCH'].includes(method)) {
       options.body = data.body;
-
-      const response = await ky(endpoint, options);
-      const contentType = response.headers.get('content-type');
-      const responseData = contentType?.includes('application/json')
-        ? await response.json()
-        : await response.text();
-
-      return {
-        ...context,
-        httpResponse: {
-          status: response.status,
-          statusText: response.statusText,
-          data: responseData,
-        },
+      options.headers = {
+        'Content-Type': 'application/json',
       };
     }
+
+    const response = await ky(endpoint, options);
+    const contentType = response.headers.get('content-type');
+    const responseData = contentType?.includes('application/json')
+      ? await response.json()
+      : await response.text();
+
+    return {
+      ...context,
+      httpResponse: {
+        status: response.status,
+        statusText: response.statusText,
+        data: responseData,
+      },
+    };
   });
 
   // TODO: Publish "success" state for http request
