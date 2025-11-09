@@ -67,49 +67,60 @@ export const httpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
     throw new NonRetriableError('HTTP Request node: Method not configured');
   }
 
-  const result = await step.run('http-request', async () => {
-    const endpoint = HandleBars.compile(data.endpoint)(context);
-    const method = data.method;
+  try {
+    const result = await step.run('http-request', async () => {
+      const endpoint = HandleBars.compile(data.endpoint)(context);
+      const method = data.method;
 
-    const options: KyOptions = {
-      method,
-    };
-
-    if (['POST', 'PUT', 'PATCH'].includes(method)) {
-      const resolved = HandleBars.compile(data.body || '{}')(context);
-      JSON.parse(resolved);
-      options.body = resolved;
-      options.headers = {
-        'Content-Type': 'application/json',
+      const options: KyOptions = {
+        method,
       };
-    }
 
-    const response = await ky(endpoint, options);
-    const contentType = response.headers.get('content-type');
-    const responseData = contentType?.includes('application/json')
-      ? await response.json()
-      : await response.text();
+      if (['POST', 'PUT', 'PATCH'].includes(method)) {
+        const resolved = HandleBars.compile(data.body || '{}')(context);
+        JSON.parse(resolved);
+        options.body = resolved;
+        options.headers = {
+          'Content-Type': 'application/json',
+        };
+      }
 
-    const responsePayload = {
-      httpResponse: {
-        status: response.status,
-        statusText: response.statusText,
-        data: responseData,
-      },
-    };
+      const response = await ky(endpoint, options);
+      const contentType = response.headers.get('content-type');
+      const responseData = contentType?.includes('application/json')
+        ? await response.json()
+        : await response.text();
 
-    return {
-      ...context,
-      [data.variableName]: responsePayload,
-    };
-  });
+      const responsePayload = {
+        httpResponse: {
+          status: response.status,
+          statusText: response.statusText,
+          data: responseData,
+        },
+      };
 
-  await publish(
-    httpRequestChannel().status({
-      nodeId,
-      status: 'success',
-    })
-  );
+      return {
+        ...context,
+        [data.variableName]: responsePayload,
+      };
+    });
 
-  return result;
+    await publish(
+      httpRequestChannel().status({
+        nodeId,
+        status: 'success',
+      })
+    );
+
+    return result;
+  } catch (error) {
+    await publish(
+      httpRequestChannel().status({
+        nodeId,
+        status: 'error',
+      })
+    );
+
+    throw error;
+  }
 };
