@@ -12,6 +12,7 @@ import { NodeType } from '@/generated/prisma';
 import { connect } from 'http2';
 import { inngest } from '@/inngest/client';
 import { init } from '@paralleldrive/cuid2';
+import { sendWorkflowExecution } from '@/inngest/utils';
 
 export const workflowsRouter = createTRPCRouter({
   execute: protectedProcedure
@@ -24,11 +25,8 @@ export const workflowsRouter = createTRPCRouter({
         },
       });
 
-      await inngest.send({
-        name: 'workflows/execute.workflow',
-        data: {
-          workflowId: input.id,
-        },
+      await sendWorkflowExecution({
+        workflowId: input.id,
       });
 
       return workflow;
