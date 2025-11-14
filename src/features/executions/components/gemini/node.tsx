@@ -5,12 +5,12 @@ import { memo, useState } from 'react';
 import { BaseExecutionNode } from '../bace-execution-node';
 import { AVAILABLE_MODELS, GeminiDialog, GeminiFormValues } from './dialog';
 import { useNodeStatus } from '../../hooks/use-node-status';
-import { HTTP_REQUEST_CHANNEL_NAME } from '@/inngest/channels/http-request';
-import { fetchHttpRequestRealtimeToken } from './action';
+import { fetchGeminiRealtimeToken } from './action';
+import { GEMINI_CHANNEL_NAME } from '@/inngest/channels/gemini';
 
 type GeminiNodeData = {
   variableName?: string;
-  model?: any;
+  model?: string;
   systemPrompt?: string;
   userPrompt?: string;
 };
@@ -23,9 +23,9 @@ export const GeminiNode = memo((props: NodeProps<GeminiNodeType>) => {
 
   const nodeStatus = useNodeStatus({
     nodeId: props.id,
-    channel: HTTP_REQUEST_CHANNEL_NAME,
+    channel: GEMINI_CHANNEL_NAME,
     topic: 'status',
-    refreshToken: fetchHttpRequestRealtimeToken,
+    refreshToken: fetchGeminiRealtimeToken,
   });
 
   const handleSubmit = (values: GeminiFormValues) => {

@@ -1,8 +1,9 @@
 import HandleBars from 'handlebars';
 import type { NodeExecutor } from '@/features/executions/types';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { generateText } from 'ai';
 import { NonRetriableError } from 'inngest';
-import ky, { type Options as KyOptions } from 'ky';
-import { httpRequestChannel } from '@/inngest/channels/http-request';
+import { geminiChannel } from '@/inngest/channels/gemini';
 
 HandleBars.registerHelper('json', (context) => {
   const jsonString = JSON.stringify(context, null, 2);
@@ -11,14 +12,14 @@ HandleBars.registerHelper('json', (context) => {
   return safeString;
 });
 
-type HttpRequestData = {
+type GeminiData = {
   variableName?: string;
-  endpoint?: string;
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  body?: string;
+  model?: string;
+  systemPrompt?: string;
+  userPrompt?: string;
 };
 
-export const httpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
+export const geminiExecutor: NodeExecutor<GeminiData> = async ({
   data,
   nodeId,
   context,
@@ -26,102 +27,82 @@ export const httpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
   publish,
 }) => {
   await publish(
-    httpRequestChannel().status({
+    geminiChannel().status({
       nodeId,
       status: 'loading',
     })
   );
 
+  if (!data.variableName) {
+    await publish(
+      geminiChannel().status({
+        nodeId,
+        status: 'error',
+      })
+    );
+    throw new NonRetriableError('Gemini node: Variable name is missing.');
+  }
+
+  if (!data.userPrompt) {
+    await publish(
+      geminiChannel().status({
+        nodeId,
+        status: 'error',
+      })
+    );
+    throw new NonRetriableError('Gemini node: User prompt is missing.');
+  }
+
+  // TODO: Throw if credential is missing
+
+  const systemPrompt = data.systemPrompt
+    ? HandleBars.compile(data.systemPrompt)(context)
+    : 'You are a helpful AI assistant.';
+  const userPrompt = HandleBars.compile(data.userPrompt)(context);
+
+  // TODO: Fetch credential that user selected
+
+  const credentialValue = process.env.GOOGLE_GENERATIVE_AI_API_KEY!;
+
+  const google = createGoogleGenerativeAI({
+    apiKey: credentialValue,
+  });
+
   try {
-    const result = await step.run('http-request', async () => {
-      if (!data.endpoint) {
-        await publish(
-          httpRequestChannel().status({
-            nodeId,
-            status: 'error',
-          })
-        );
-
-        throw new NonRetriableError(
-          'HTTP Request node: No endpoint configured'
-        );
-      }
-
-      if (!data.variableName) {
-        await publish(
-          httpRequestChannel().status({
-            nodeId,
-            status: 'error',
-          })
-        );
-
-        throw new NonRetriableError(
-          'HTTP Request node: Variable name not configured'
-        );
-      }
-
-      if (!data.method) {
-        await publish(
-          httpRequestChannel().status({
-            nodeId,
-            status: 'error',
-          })
-        );
-
-        throw new NonRetriableError('HTTP Request node: Method not configured');
-      }
-      const endpoint = HandleBars.compile(data.endpoint)(context);
-      const method = data.method;
-
-      const options: KyOptions = {
-        method,
-      };
-
-      if (['POST', 'PUT', 'PATCH'].includes(method)) {
-        const resolved = HandleBars.compile(data.body || '{}')(context);
-        JSON.parse(resolved);
-        options.body = resolved;
-        options.headers = {
-          'Content-Type': 'application/json',
-        };
-      }
-
-      const response = await ky(endpoint, options);
-      const contentType = response.headers.get('content-type');
-      const responseData = contentType?.includes('application/json')
-        ? await response.json()
-        : await response.text();
-
-      const responsePayload = {
-        httpResponse: {
-          status: response.status,
-          statusText: response.statusText,
-          data: responseData,
-        },
-      };
-
-      return {
-        ...context,
-        [data.variableName]: responsePayload,
-      };
+    const { steps } = await step.ai.wrap('gemini-generate-text', generateText, {
+      model: google(data.model || "gemini-2.5-flash"),
+      system: systemPrompt,
+      prompt: userPrompt,
+      experimental_telemetry: {
+        isEnabled: true,
+        recordInputs: true,
+        recordOutputs: true,
+      },
     });
 
+    const text =
+      steps[0].content[0]?.type === 'text' ? steps[0].content[0].text : '';
+
     await publish(
-      httpRequestChannel().status({
+      geminiChannel().status({
         nodeId,
         status: 'success',
       })
     );
 
-    return result;
-  } catch (error) {
+    return {
+      ...context,
+      [data.variableName]: {
+        aiResponse: text,
+      },
+    };
+  } catch (error: any) {
     await publish(
-      httpRequestChannel().status({
+      geminiChannel().status({
         nodeId,
         status: 'error',
       })
     );
-
     throw error;
   }
 };
